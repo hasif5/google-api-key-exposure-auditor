@@ -190,10 +190,10 @@ function updateRiskBanner(el, audits) {
   if (!audits || !audits.length) return;
   if (r.level === 'critical' || r.level === 'high' || r.level === 'restricted') {
     el.classList.add('show', r.level);
-    const head = r.level === 'critical' ? '⚠ CRITICAL — UNRESTRICTED & BILLABLE'
-      : r.level === 'high' ? '⚠ UNRESTRICTED KEY'
+    const head = r.level === 'critical' ? (r.bypass ? '⚠ CRITICAL — REFERRER BYPASS (billable)' : '⚠ CRITICAL — UNRESTRICTED & BILLABLE')
+      : r.level === 'high' ? (r.bypass ? '⚠ REFERRER RESTRICTION BYPASSED' : '⚠ UNRESTRICTED KEY')
       : '✓ Restricted (referrer/IP locked)';
-    const sub = r.enabledServices.length ? 'reachable: ' + r.enabledServices.join(', ') : r.label;
+    const sub = r.enabledServices.length ? 'reachable (no Referer): ' + r.enabledServices.join(', ') : r.label;
     el.innerHTML = head + '<span class="sub">' + sub + '</span>';
   }
 }

@@ -170,8 +170,9 @@ function buildRow(f) {
   const riskSub = document.createElement('span');
   riskSub.className = 'risk-sub';
   riskSub.textContent = risk.enabledServices.length
-    ? 'reachable: ' + risk.enabledServices.join(', ')
+    ? (risk.bypass ? 'referrer bypass · ' : '') + 'reachable: ' + risk.enabledServices.join(', ')
     : risk.label;
+  if (risk.bypass) riskSub.title = risk.label;
   riskTd.appendChild(riskSub);
 
   // Key cell
