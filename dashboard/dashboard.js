@@ -5,6 +5,20 @@ import { assessRisk } from '../lib/audit.js';
 
 let savedKeys = new Set();
 const collapsedGroups = new Set();
+const COLLAPSED_KEY = 'gaks_collapsed_groups';
+
+function saveCollapsed() {
+  chrome.storage.local.set({ [COLLAPSED_KEY]: Array.from(collapsedGroups) }).catch(() => {});
+}
+async function loadCollapsed() {
+  try {
+    const res = await chrome.storage.local.get(COLLAPSED_KEY);
+    if (Array.isArray(res[COLLAPSED_KEY])) {
+      collapsedGroups.clear();
+      res[COLLAPSED_KEY].forEach((d) => collapsedGroups.add(d));
+    }
+  } catch (e) { /* ignore */ }
+}
 
 function hostOf(o) {
   try { return new URL(o).hostname; } catch (e) { return o || 'unknown'; }
@@ -456,6 +470,7 @@ async function render() {
     hdr.appendChild(td);
     hdr.addEventListener('click', () => {
       if (collapsed) collapsedGroups.delete(domain); else collapsedGroups.add(domain);
+      saveCollapsed();
       render();
     });
     els.rows.appendChild(hdr);
@@ -646,4 +661,4 @@ chrome.storage.onChanged.addListener((changes, area) => {
 });
 
 loadIgnore();
-render();
+loadCollapsed().then(render);
