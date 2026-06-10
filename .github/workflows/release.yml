@@ -17,7 +17,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Validate manifest (version matches tag, description <= 132)
         run: |
@@ -46,9 +46,16 @@ jobs:
             -o "google-api-key-exposure-auditor-${GITHUB_REF_NAME}.zip" HEAD
 
       - name: Create / update release with assets
-        uses: softprops/action-gh-release@v2
-        with:
-          generate_release_notes: true
-          files: |
-            dist/google-api-key-exposure-auditor-store.zip
-            google-api-key-exposure-auditor-${{ github.ref_name }}.zip
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          SRC="google-api-key-exposure-auditor-${GITHUB_REF_NAME}.zip"
+          STORE="dist/google-api-key-exposure-auditor-store.zip"
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" "$STORE" "$SRC" --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" \
+              --title "$GITHUB_REF_NAME" \
+              --generate-notes \
+              "$STORE" "$SRC"
+          fi
