@@ -143,34 +143,49 @@
     setTimeout(scanAndReport, 400);
   }
 
-  // Initial scan once the page settles.
-  scanAndReport();
+  function start() {
+    // Initial scan once the page settles.
+    scanAndReport();
 
-  // Watch for dynamically injected scripts/markup.
-  try {
-    var observer = new MutationObserver(function () { scheduleScan(); });
-    observer.observe(document.documentElement || document, {
-      childList: true,
-      subtree: true,
-      attributes: true,
-      attributeFilter: ['src', 'href', 'data-src']
+    // Watch for dynamically injected scripts/markup.
+    try {
+      var observer = new MutationObserver(function () { scheduleScan(); });
+      observer.observe(document.documentElement || document, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        attributeFilter: ['src', 'href', 'data-src']
+      });
+    } catch (e) {
+      /* no document element yet — fall back to a couple of timed scans */
+    }
+
+    // A few delayed sweeps catch async resource loads not tied to DOM mutations.
+    setTimeout(scheduleScan, 1500);
+    setTimeout(scheduleScan, 4000);
+
+    // Allow the popup/worker to force a re-scan (e.g. user clicked "rescan").
+    chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
+      if (msg && msg.type === 'GAKS_RESCAN') {
+        reported = Object.create(null);
+        sentScripts = Object.create(null);
+        scanAndReport();
+        sendResponse({ ok: true });
+      }
+      return false;
     });
-  } catch (e) {
-    /* no document element yet — fall back to a couple of timed scans */
   }
 
-  // A few delayed sweeps catch async resource loads not tied to DOM mutations.
-  setTimeout(scheduleScan, 1500);
-  setTimeout(scheduleScan, 4000);
-
-  // Allow the popup/worker to force a re-scan (e.g. user clicked "rescan").
-  chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
-    if (msg && msg.type === 'GAKS_RESCAN') {
-      reported = Object.create(null);
-      sentScripts = Object.create(null);
-      scanAndReport();
-      sendResponse({ ok: true });
-    }
-    return false;
-  });
+  // Skip detection entirely on ignored domains (e.g. google.com, youtube.com).
+  try {
+    chrome.storage.local.get('gaks_ignore_domains', function (res) {
+      void chrome.runtime.lastError;
+      var extra = res && Array.isArray(res.gaks_ignore_domains) ? res.gaks_ignore_domains : [];
+      if (GAKS.hostIsIgnored(location.hostname, extra)) return; // do nothing on this page
+      start();
+    });
+  } catch (e) {
+    // storage unavailable — fall back to default-list check only.
+    if (!GAKS.hostIsIgnored(location.hostname, [])) start();
+  }
 })();

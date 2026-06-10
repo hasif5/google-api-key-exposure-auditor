@@ -1,8 +1,17 @@
 import { getDb, importDb, clearAll, deleteFinding,
-  getCollection, saveToCollection, removeFromCollection } from '../lib/store.js';
+  getCollection, saveToCollection, removeFromCollection,
+  getIgnoreDomains, setIgnoreDomains, purgeIgnored } from '../lib/store.js';
 import { assessRisk } from '../lib/audit.js';
 
 let savedKeys = new Set();
+const collapsedGroups = new Set();
+
+function hostOf(o) {
+  try { return new URL(o).hostname; } catch (e) { return o || 'unknown'; }
+}
+function groupDomainOf(f) {
+  return (f.origins && f.origins.length) ? hostOf(f.origins[0]) : 'unknown';
+}
 
 const els = {
   rows: document.getElementById('rows'),
@@ -360,23 +369,59 @@ async function render() {
       f.key.toLowerCase().includes(q) ||
       (f.origins || []).some((o) => o.toLowerCase().includes(q)));
   }
-  items.sort((a, b) =>
+  const byRisk = (a, b) =>
     (RISK_RANK[assessRisk(a.audits).level] - RISK_RANK[assessRisk(b.audits).level]) ||
     (b.mapsContext - a.mapsContext) ||
-    (new Date(b.lastSeen) - new Date(a.lastSeen)));
+    (new Date(b.lastSeen) - new Date(a.lastSeen));
+
+  // Group findings by their primary domain.
+  const groups = new Map();
+  items.forEach((f) => {
+    const d = groupDomainOf(f);
+    if (!groups.has(d)) groups.set(d, []);
+    groups.get(d).push(f);
+  });
+  const groupArr = Array.from(groups.entries());
+  groupArr.forEach(([, arr]) => arr.sort(byRisk));
+  const worstRisk = (arr) => Math.min(...arr.map((f) => RISK_RANK[assessRisk(f.audits).level]));
+  groupArr.sort((a, b) => worstRisk(a[1]) - worstRisk(b[1]) || a[0].localeCompare(b[0]));
 
   renderStats(currentFindings);
   els.rows.innerHTML = '';
   els.empty.style.display = items.length ? 'none' : 'block';
 
-  items.forEach((f) => {
-    els.rows.appendChild(buildRow(f));
-    if (expanded.has(f.id)) {
-      const dr = document.createElement('tr');
-      dr.className = 'detail-row';
-      dr.appendChild(detailTable(f));
-      els.rows.appendChild(dr);
-    }
+  groupArr.forEach(([domain, arr]) => {
+    const collapsed = collapsedGroups.has(domain);
+    const unrestricted = arr.filter((f) => {
+      const lv = assessRisk(f.audits).level; return lv === 'critical' || lv === 'high';
+    }).length;
+
+    const hdr = document.createElement('tr');
+    hdr.className = 'group-header';
+    const td = document.createElement('td');
+    td.colSpan = 7;
+    td.innerHTML =
+      '<span class="gh-toggle">' + (collapsed ? '▶' : '▼') + '</span>' +
+      '<span class="gh-domain">' + esc(domain) + '</span>' +
+      '<span class="gh-count">' + arr.length + ' key' + (arr.length > 1 ? 's' : '') + '</span>' +
+      (unrestricted ? '<span class="gh-alert">⚠ ' + unrestricted + ' unrestricted</span>' : '');
+    hdr.appendChild(td);
+    hdr.addEventListener('click', () => {
+      if (collapsed) collapsedGroups.delete(domain); else collapsedGroups.add(domain);
+      render();
+    });
+    els.rows.appendChild(hdr);
+    if (collapsed) return;
+
+    arr.forEach((f) => {
+      els.rows.appendChild(buildRow(f));
+      if (expanded.has(f.id)) {
+        const dr = document.createElement('tr');
+        dr.className = 'detail-row';
+        dr.appendChild(detailTable(f));
+        els.rows.appendChild(dr);
+      }
+    });
   });
 
   window.scrollTo(0, scrollY); // keep the user where they were
@@ -489,9 +534,29 @@ document.getElementById('auditAllBtn').addEventListener('click', async () => {
 
 els.filter.addEventListener('input', render);
 
-// Re-render if storage changes while the dashboard is open.
-chrome.storage.onChanged.addListener((changes, area) => {
-  if (area === 'local' && changes.gaks_db) render();
+// ---- Ignored-domains settings ----
+const ignoreInput = document.getElementById('ignoreInput');
+const ignoreStatus = document.getElementById('ignoreStatus');
+
+async function loadIgnore() {
+  const list = await getIgnoreDomains();
+  ignoreInput.value = list.join('\n');
+}
+
+document.getElementById('ignoreSave').addEventListener('click', async () => {
+  const raw = ignoreInput.value.split(/[\s,]+/).map((s) => s.trim()).filter(Boolean);
+  const saved = await setIgnoreDomains(raw);
+  const res = await purgeIgnored(saved);
+  ignoreInput.value = saved.join('\n');
+  ignoreStatus.textContent = 'Saved ' + saved.length + ' custom domain' + (saved.length === 1 ? '' : 's') +
+    '; removed ' + (res ? res.removed : 0) + ' stored key' + ((res && res.removed === 1) ? '' : 's') + '.';
+  render();
 });
 
+// Re-render if storage changes while the dashboard is open.
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === 'local' && (changes.gaks_db || changes.gaks_collection)) render();
+});
+
+loadIgnore();
 render();

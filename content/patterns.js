@@ -25,6 +25,30 @@ var GAKS = (function () {
   // Single-key validity check (anchored), used to validate user/network input.
   var SINGLE_KEY_RE = /^AIza[0-9A-Za-z_\-]{35}$/;
 
+  // Domains whose pages we skip entirely (mirror of lib/ignore.js).
+  var GOOGLE_HOST_RE = /(^|\.)google\.[a-z]{2,}(\.[a-z]{2,})?$/;
+  var IGNORED_DOMAINS = [
+    'gstatic.com', 'googleusercontent.com', 'googleapis.com', 'googlevideo.com',
+    'googletagmanager.com', 'google-analytics.com', 'googlesyndication.com',
+    'googleadservices.com', 'doubleclick.net', 'withgoogle.com', 'googlesource.com',
+    'goo.gl', 'gmail.com', 'youtube.com', 'youtu.be', 'ytimg.com', 'ggpht.com',
+    'android.com', 'chromium.org',
+    'facebook.com', 'fbcdn.net', 'instagram.com', 'whatsapp.com',
+    'yahoo.com', 'yahooapis.com', 'yimg.com'
+  ];
+
+  function hostIsIgnored(host, extra) {
+    if (!host) return false;
+    host = String(host).toLowerCase();
+    if (GOOGLE_HOST_RE.test(host)) return true;
+    var list = IGNORED_DOMAINS.concat(Array.isArray(extra) ? extra : []);
+    for (var i = 0; i < list.length; i++) {
+      var d = list[i];
+      if (d && (host === d || host.slice(-(d.length + 1)) === '.' + d)) return true;
+    }
+    return false;
+  }
+
   function isMapsContext(text) {
     if (!text) return false;
     var lower = String(text).toLowerCase();
@@ -72,7 +96,9 @@ var GAKS = (function () {
     KEY_RE: KEY_RE,
     SINGLE_KEY_RE: SINGLE_KEY_RE,
     MAPS_HINTS: MAPS_HINTS,
+    IGNORED_DOMAINS: IGNORED_DOMAINS,
     isMapsContext: isMapsContext,
+    hostIsIgnored: hostIsIgnored,
     findInText: findInText,
     snippetAround: snippetAround
   };

@@ -39,6 +39,8 @@ IP / API enablement) can be assessed and reported.
 - **Billing awareness.** Each probe is marked free vs billable with an approximate cost note. The default audit uses only **free** access checks; token-billing calls are strictly opt-in.
 - **Research dashboard** with a live progress bar, per-key detail, and **JSON / CSV export + import** for record-keeping.
 - **My Collection** — bookmark any key with a **Save** button; a dedicated, persistent collection page lets you revisit, annotate, re-audit, and export saved keys. It's stored separately, so it survives "Clear all".
+- **Domain ignore-list** — detection is skipped on noisy first-party domains (all **google.\*** & Google services, YouTube, Facebook, Instagram, Yahoo by default; extend it in the dashboard). Saving the list also purges any already-stored keys from those domains.
+- **Grouped dashboard** — findings are grouped under collapsible **domain** headers (with per-domain key counts and an unrestricted-key warning), so many keys from one site are easy to work with.
 - **Resilient** — bounded retries with backoff on transient errors, concurrency limits, and size caps on bundle scanning.
 
 ## How it works

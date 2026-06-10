@@ -8,12 +8,31 @@
  *  - Runs the active key audit on demand and stores the results.
  */
 
-import { upsertFinding, setAudits, getFinding, getDb, migrate } from './lib/store.js';
+import { upsertFinding, setAudits, getFinding, getDb, migrate,
+  getIgnoreDomains, purgeIgnored } from './lib/store.js';
 import { auditKey } from './lib/audit.js';
 import { findKeysInText, isMapsContext } from './lib/keys.js';
+import { urlHostIsIgnored } from './lib/ignore.js';
 
 // One-time cleanup: collapse any duplicates left by an earlier version.
 migrate().catch((e) => console.error('[GAKS] migrate failed:', e));
+
+// Cache the user-added ignore list and purge any already-stored ignored keys.
+let userIgnore = [];
+getIgnoreDomains().then((l) => { userIgnore = l; return purgeIgnored(l); })
+  .catch((e) => console.error('[GAKS] ignore init failed:', e));
+
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === 'local' && changes.gaks_ignore_domains) {
+    userIgnore = Array.isArray(changes.gaks_ignore_domains.newValue)
+      ? changes.gaks_ignore_domains.newValue : [];
+    purgeIgnored(userIgnore).catch(() => {});
+  }
+});
+
+function pageIgnored(urlOrOrigin) {
+  return urlHostIsIgnored(urlOrOrigin, userIgnore);
+}
 
 const KEY_RE = /^AIza[0-9A-Za-z_\-]{35}$/;
 const MAPS_HINTS = ['maps.googleapis.com', 'maps.google.com', 'maps.gstatic.com', '/maps/'];
@@ -88,6 +107,7 @@ chrome.webRequest.onBeforeRequest.addListener(
     try { url = new URL(details.url); } catch (e) { return; }
     const key = url.searchParams.get('key');
     if (!key || !KEY_RE.test(key)) return;
+    if (pageIgnored(details.initiator)) return; // skip ignored visiting domains
 
     const origin = details.initiator || url.origin;
     upsertFinding({
@@ -109,6 +129,7 @@ chrome.webRequest.onBeforeRequest.addListener(
 const KEY_IN_TEXT_RE = /AIza[0-9A-Za-z_\-]{35}/;
 chrome.webRequest.onBeforeSendHeaders.addListener(
   (details) => {
+    if (pageIgnored(details.initiator)) return; // skip ignored visiting domains
     const headers = details.requestHeaders || [];
     for (const h of headers) {
       const name = (h.name || '').toLowerCase();
@@ -141,6 +162,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type === 'GAKS_FINDINGS') {
     const tabId = sender && sender.tab ? sender.tab.id : -1;
     const origin = msg.origin || (sender && sender.tab ? new URL(sender.tab.url).origin : 'unknown');
+    if (pageIgnored(origin)) { sendResponse({ ok: true, ignored: true }); return true; }
     const findings = Array.isArray(msg.findings) ? msg.findings : [];
     Promise.all(findings.map((f) => {
       noteKeyForTab(tabId, f.key);
@@ -211,6 +233,7 @@ function safeOrigin(u) {
 }
 
 function enqueueScript(rawUrl, origin, pageUrl, tabId) {
+  if (pageIgnored(origin) || pageIgnored(pageUrl)) return; // ignored visiting domain
   let url;
   try { url = new URL(rawUrl); } catch (e) { return; }
   if (url.protocol !== 'http:' && url.protocol !== 'https:') return;

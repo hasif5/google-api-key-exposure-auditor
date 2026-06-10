@@ -29,6 +29,16 @@
     owner — run them only against keys you are authorized to test.
   </section>
 
+  <details class="settings">
+    <summary>⚙ Ignored domains — detection is skipped on these sites</summary>
+    <p class="hint">Built-in (always on): all <strong>google.*</strong> &amp; Google services, YouTube, Facebook, Instagram, Yahoo. Add your own below (comma- or newline-separated). Saving also removes any already-stored keys from these domains.</p>
+    <textarea id="ignoreInput" placeholder="example.com&#10;another-site.com"></textarea>
+    <div class="row">
+      <button id="ignoreSave" class="btn">Save &amp; purge</button>
+      <span id="ignoreStatus" class="hint"></span>
+    </div>
+  </details>
+
   <div id="progress" class="progress" hidden>
     <div class="progress-track"><div id="progressBar" class="progress-bar"></div></div>
     <span id="progressLabel" class="progress-label"></span>
