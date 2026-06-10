@@ -1,4 +1,4 @@
-# Google API Key Sniffer &amp; Auditor
+# Google API Key Exposure Auditor
 
 A Chrome / Microsoft Edge (Manifest V3) browser extension that detects exposed
 **Google API keys** (`AIza…`) in the pages you visit — in the rendered DOM, web
@@ -175,9 +175,21 @@ icons/                  extension icons
 Issues and PRs are welcome. Please keep the **authorized-use** framing intact and
 do not add features whose primary purpose is unauthorized exploitation.
 
+## Privacy
+
+The extension runs entirely on your device — no backend, no analytics, no
+telemetry. See [PRIVACY.md](./PRIVACY.md).
+
+## Publishing to the stores
+
+A complete, copy-paste submission package (listing copy, permission
+justifications, build step) is in
+[docs/STORE_SUBMISSION.md](./docs/STORE_SUBMISSION.md). Build the upload zip with
+`./build.sh` (or `.\build.ps1`).
+
 ## License
 
-[MIT](./LICENSE) © 2026 Google API Key Sniffer &amp; Auditor contributors.
+[MIT](./LICENSE) © 2026 hasif5.
 
 ## Disclaimer
 

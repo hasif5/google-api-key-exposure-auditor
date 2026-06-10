@@ -1,8 +1,9 @@
 {
   "manifest_version": 3,
-  "name": "Google API Key Sniffer & Auditor",
-  "version": "1.0.0",
-  "description": "Academic/research security tool: detects exposed Google API keys (AIza...) in page source and network traffic, then audits their restriction posture against Maps, Gemini, and Vertex AI.",
+  "name": "Google API Key Exposure Auditor",
+  "version": "1.1.0",
+  "description": "Detects exposed Google API keys on web pages and audits their restriction and billing exposure. Authorized security research only.",
+  "homepage_url": "https://github.com/hasif5/google-api-key-exposure-auditor",
   "minimum_chrome_version": "102",
   "permissions": [
     "storage",
@@ -28,7 +29,7 @@
   ],
   "action": {
     "default_popup": "popup/popup.html",
-    "default_title": "Google API Key Sniffer",
+    "default_title": "Google API Key Exposure Auditor",
     "default_icon": {
       "16": "icons/icon16.png",
       "32": "icons/icon32.png",
