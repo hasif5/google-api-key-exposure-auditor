@@ -167,6 +167,7 @@ body {
 .pill.billable { background: #3a2a12; color: #f0c060; border-color: #5a431d; font-weight: 600; }
 .tag.src-script { color: #c7a6ff; }
 .tag.src-storage { color: #7ee2d0; }
+.tag.src-sourcemap { color: #ff9ad2; }
 
 .risk-banner {
   display: none;

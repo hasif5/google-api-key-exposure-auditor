@@ -19,6 +19,20 @@
   var sentScripts = Object.create(null); // external script URLs already forwarded
   var pending = false;
 
+  // Collect HTML inside open shadow roots (component frameworks hide markup here).
+  function shadowHtml() {
+    var parts = [];
+    try {
+      var all = document.querySelectorAll('*');
+      var cap = Math.min(all.length, 8000);
+      for (var i = 0; i < cap; i++) {
+        var sr = all[i].shadowRoot;
+        if (sr) { try { parts.push(sr.innerHTML); } catch (e) { /* closed */ } }
+      }
+    } catch (e) { /* ignore */ }
+    return parts.join('\n');
+  }
+
   function collectDomFindings() {
     var html = '';
     try {
@@ -26,6 +40,8 @@
     } catch (e) {
       html = '';
     }
+    var shadow = shadowHtml();
+    if (shadow) html += '\n' + shadow;
     return GAKS.findInText(html).map(function (r) {
       r.source = 'dom';
       return r;
@@ -72,14 +88,14 @@
   // bundle bodies (catches keys baked into minified JS, not just inline markup).
   function reportScripts() {
     var urls = [];
+    function add(u) { if (u && !sentScripts[u]) { sentScripts[u] = true; urls.push(u); } }
     try {
-      document.querySelectorAll('script[src]').forEach(function (s) {
-        if (s.src && !sentScripts[s.src]) { sentScripts[s.src] = true; urls.push(s.src); }
+      document.querySelectorAll('script[src]').forEach(function (s) { add(s.src); });
+      // All linked resources: stylesheets, preloads, modulepreload, prefetch, manifest.
+      document.querySelectorAll('link[href]').forEach(function (l) {
+        var rel = (l.getAttribute('rel') || '').toLowerCase();
+        if (/stylesheet|preload|modulepreload|prefetch|manifest/.test(rel)) add(l.href);
       });
-      document.querySelectorAll('link[rel="preload"][as="script"][href],link[rel="modulepreload"][href]')
-        .forEach(function (l) {
-          if (l.href && !sentScripts[l.href]) { sentScripts[l.href] = true; urls.push(l.href); }
-        });
     } catch (e) { return; }
     if (!urls.length) return;
     try {

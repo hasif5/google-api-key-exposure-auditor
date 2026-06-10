@@ -37,14 +37,30 @@ function pageIgnored(urlOrOrigin) {
 const KEY_RE = /^AIza[0-9A-Za-z_\-]{35}$/;
 const MAPS_HINTS = ['maps.googleapis.com', 'maps.google.com', 'maps.gstatic.com', '/maps/'];
 
-// External-script scanning limits (keep it cheap and bounded).
-const SCRIPT_FETCH_TIMEOUT = 10000;
-const MAX_SCRIPT_BYTES = 4 * 1024 * 1024; // scan at most 4 MB per bundle
-const MAX_SCRIPT_CACHE = 4000;            // distinct URLs remembered
-const SCRIPT_CONCURRENCY = 4;
+// Deep resource-scanning limits (keep it bounded but go deep).
+const SCRIPT_FETCH_TIMEOUT = 12000;
+const MAX_SCRIPT_BYTES = 8 * 1024 * 1024; // scan at most 8 MB per resource
+const MAX_SCRIPT_CACHE = 8000;            // distinct URLs remembered
+const SCRIPT_CONCURRENCY = 6;
+const MAX_DEPTH = 3;                       // page → bundle → chunk/source-map → …
+const DERIVED_PER_RESOURCE = 30;           // referenced assets followed per file
 const fetchedScripts = new Set();
 const scriptQueue = [];
 let scriptActive = 0;
+
+// Common server-side paths where secrets/config commonly leak. Probed once per
+// page origin (a short, well-known list — not a brute-force scan).
+const COMMON_PATHS = [
+  '/.env', '/.env.local', '/.env.production', '/.env.development',
+  '/config.json', '/config.js', '/app.config.js', '/appsettings.json',
+  '/assets/config.json', '/static/config.json', '/env.js', '/env.json',
+  '/firebase-config.json', '/firebaseConfig.js', '/manifest.json',
+  '/.well-known/assetlinks.json'
+];
+const probedOrigins = new Set();
+
+// Asset extensions we follow when extracting URLs from scanned files.
+const FOLLOW_EXT_RE = /\.(?:js|mjs|cjs|json|map|css|txt|wasm)(?:[?#]|$)/i;
 
 // tabId -> Set of distinct keys seen on that tab. Drives both the badge and the
 // popup's "keys on this page" list. Mirrored to storage.session so it survives
@@ -216,7 +232,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     const tabId = sender && sender.tab ? sender.tab.id : -1;
     const origin = msg.origin || (sender && sender.tab ? safeOrigin(sender.tab.url) : 'unknown');
     (Array.isArray(msg.urls) ? msg.urls : []).forEach((u) =>
-      enqueueScript(u, origin, msg.pageUrl, tabId));
+      enqueueScript(u, origin, msg.pageUrl, tabId, 0));
+    probeCommonPaths(origin, msg.pageUrl, tabId);
     return false; // fire-and-forget
   }
 
@@ -267,7 +284,9 @@ function safeOrigin(u) {
   try { return new URL(u).origin; } catch (e) { return 'unknown'; }
 }
 
-function enqueueScript(rawUrl, origin, pageUrl, tabId) {
+function enqueueScript(rawUrl, origin, pageUrl, tabId, depth) {
+  depth = depth || 0;
+  if (depth > MAX_DEPTH) return;
   if (pageIgnored(origin) || pageIgnored(pageUrl)) return; // ignored visiting domain
   let url;
   try { url = new URL(rawUrl); } catch (e) { return; }
@@ -276,12 +295,19 @@ function enqueueScript(rawUrl, origin, pageUrl, tabId) {
   if (fetchedScripts.has(norm)) return;
   fetchedScripts.add(norm);
   if (fetchedScripts.size > MAX_SCRIPT_CACHE) {
-    // Drop the oldest entry to keep the cache bounded.
     const first = fetchedScripts.values().next().value;
     fetchedScripts.delete(first);
   }
-  scriptQueue.push({ url: norm, origin, pageUrl, tabId });
+  scriptQueue.push({ url: norm, origin, pageUrl, tabId, depth });
   pumpScriptQueue();
+}
+
+// Probe a short list of well-known config/secret paths, once per page origin.
+function probeCommonPaths(origin, pageUrl, tabId) {
+  if (!origin || origin === 'unknown' || probedOrigins.has(origin)) return;
+  if (pageIgnored(origin)) return;
+  probedOrigins.add(origin);
+  for (const p of COMMON_PATHS) enqueueScript(origin + p, origin, pageUrl, tabId, 0);
 }
 
 function pumpScriptQueue() {
@@ -295,6 +321,64 @@ function pumpScriptQueue() {
   }
 }
 
+function recordHits(text, job, source, label) {
+  const hits = detectKeys(text);
+  for (const h of hits) {
+    noteKeyForTab(job.tabId, h.key);
+    upsertFinding({
+      key: h.key,
+      provider: h.provider || 'google',
+      origin: job.origin,
+      pageUrl: job.pageUrl || job.url,
+      source: source,
+      snippet: 'in ' + shortUrl(job.url) + (label ? ' (' + label + ')' : '') + ' — ' + h.snippet,
+      mapsContext: h.mapsContext || (h.provider === 'google' && isMapsContext(job.url))
+    });
+  }
+}
+
+// Decode a JS source map and scan the ORIGINAL (un-minified) sources — keys that
+// minification mangled often reappear here verbatim.
+function scanSourceMap(text, job) {
+  let map;
+  try { map = JSON.parse(text); } catch (e) { return false; }
+  if (!map || !Array.isArray(map.sourcesContent)) return false;
+  const joined = map.sourcesContent.filter(Boolean).join('\n');
+  if (joined) recordHits(joined, job, 'sourcemap', 'source map');
+  return true;
+}
+
+// Follow references found inside a scanned file: its source map + any asset URLs
+// it names (chunks, JSON config, CSS). Bounded by depth, per-file count, and host.
+function followReferences(text, job) {
+  const nextDepth = (job.depth || 0) + 1;
+  if (nextDepth > MAX_DEPTH) return;
+  let baseHost = '';
+  try { baseHost = new URL(job.url).host; } catch (e) { /* ignore */ }
+  let pageHost = '';
+  try { pageHost = new URL(job.pageUrl || job.origin).host; } catch (e) { /* ignore */ }
+
+  // Source map (//# sourceMappingURL=...).
+  const sm = text.match(/\/\/[#@]\s*sourceMappingURL=([^\s'"]+)/);
+  if (sm && sm[1].indexOf('data:') !== 0) {
+    try { enqueueScript(new URL(sm[1], job.url).href, job.origin, job.pageUrl, job.tabId, nextDepth); } catch (e) { /* ignore */ }
+  }
+
+  // Referenced asset URLs in string literals.
+  const re = /["'`(]([a-zA-Z0-9_./\-]+\.(?:js|mjs|cjs|json|map|css|txt|wasm))(?:\?[^"'`)\s]*)?["'`)]/g;
+  let m, count = 0;
+  while ((m = re.exec(text)) !== null && count < DERIVED_PER_RESOURCE) {
+    let abs;
+    try { abs = new URL(m[1], job.url).href; } catch (e) { continue; }
+    let host;
+    try { host = new URL(abs).host; } catch (e) { continue; }
+    // Stay within the page's host or the resource's own host (don't crawl the web).
+    if (host !== baseHost && host !== pageHost) continue;
+    enqueueScript(abs, job.origin, job.pageUrl, job.tabId, nextDepth);
+    count++;
+  }
+}
+
 async function scanScript(job) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), SCRIPT_FETCH_TIMEOUT);
@@ -303,8 +387,11 @@ async function scanScript(job) {
     const res = await fetch(job.url, { signal: controller.signal, credentials: 'omit' });
     if (!res.ok) return;
     const ct = (res.headers.get('content-type') || '').toLowerCase();
-    // Only scan textual/script payloads.
-    if (ct && !/javascript|ecmascript|json|text|application\/x-/.test(ct)) return;
+    const pathLooksTextual = FOLLOW_EXT_RE.test(job.url) || /\/\.env/.test(job.url);
+    // Scan textual payloads (JS/CSS/JSON/text/xml/source maps), or anything whose
+    // URL looks like a code/config asset even if the content-type is generic.
+    if (ct && !pathLooksTextual &&
+        !/javascript|ecmascript|json|text|css|xml|application\/x-|octet-stream/.test(ct)) return;
     text = await res.text();
   } catch (e) {
     return;
@@ -314,19 +401,14 @@ async function scanScript(job) {
   if (!text) return;
   if (text.length > MAX_SCRIPT_BYTES) text = text.slice(0, MAX_SCRIPT_BYTES);
 
-  const hits = detectKeys(text);
-  for (const h of hits) {
-    noteKeyForTab(job.tabId, h.key);
-    upsertFinding({
-      key: h.key,
-      provider: h.provider || 'google',
-      origin: job.origin,
-      pageUrl: job.pageUrl || job.url,
-      source: 'script',
-      snippet: 'in ' + shortUrl(job.url) + ' — ' + h.snippet,
-      mapsContext: h.mapsContext || (h.provider === 'google' && isMapsContext(job.url))
-    });
+  // 1) Scan the raw text for keys.
+  recordHits(text, job, 'script', '');
+  // 2) If it's a source map, also scan the decoded original sources.
+  if (/\.map(\?|$)/i.test(job.url) || /"sourcesContent"\s*:/.test(text.slice(0, 2000))) {
+    scanSourceMap(text, job);
   }
+  // 3) Follow source maps + referenced assets deeper.
+  followReferences(text, job);
 }
 
 function shortUrl(u) {

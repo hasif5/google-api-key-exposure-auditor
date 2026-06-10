@@ -27,11 +27,14 @@ IP / API enablement) can be assessed and reported.
 ## Features
 
 - **Multi-provider detection** — Google `AIza…`, OpenAI `sk-…` / `sk-proj-…`, Anthropic `sk-ant-…`, OpenRouter `sk-or-…`, and xAI `xai-…` keys, each tagged with a provider badge. Bearer-token keys (OpenAI/Anthropic/OpenRouter/xAI) are validated against each provider's API — a valid one is unconditionally **critical**.
-- **Passive detection across every surface** a key can hide in:
-  - Rendered DOM / inline scripts / element attributes (`<script>`, `<iframe>`, `<img>`, `<link>`)
-  - **External JavaScript bundles** — linked `.js` files are fetched and scanned (most leaked keys live in minified bundles, not inline HTML)
+- **Deep passive detection across every surface** a key can hide in:
+  - Rendered DOM / inline scripts / element attributes, **plus open shadow-DOM** markup
+  - **All linked assets** — JavaScript bundles, **CSS**, JSON/config, preloads, and web-app manifests are fetched and scanned
+  - **Source maps** — `//# sourceMappingURL` files are followed and the **original, un-minified source** is scanned (keys minification hid reappear here)
+  - **Recursive asset-graph crawl** — referenced chunks/JSON/CSS are followed up to 3 levels deep (bounded, same-origin), as far toward server-side as the app exposes
+  - **Common config paths** — a short well-known list (`/.env`, `/config.json`, `/firebase-config.json`, …) is probed once per origin
   - **Web storage** — `localStorage` and `sessionStorage`
-  - **Network traffic** — `key=` query params *and* `X-Goog-Api-Key` request headers (used by the modern Routes / Places APIs)
+  - **Network traffic** — `key=` query params, `X-Goog-Api-Key`, and `Authorization: Bearer` / `x-api-key` headers
   - Resource-timing entries
 - **One finding per key.** A key is logged once and enriched with every origin, page, and source it was seen on — no duplicates.
 - **Active key audit** (opt-in, user-triggered) against current Google endpoints:

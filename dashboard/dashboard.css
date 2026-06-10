@@ -189,6 +189,7 @@ tbody tr:hover { background: #191f25; }
 .tag.src-script { color: #c7a6ff; }
 .tag.src-storage { color: #7ee2d0; }
 .tag.src-resource { color: #9fb3c8; }
+.tag.src-sourcemap { color: #ff9ad2; }
 
 /* Risk badges */
 .risk {
