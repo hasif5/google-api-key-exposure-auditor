@@ -393,9 +393,24 @@ async function render() {
 
   groupArr.forEach(([domain, arr], gi) => {
     const collapsed = collapsedGroups.has(domain);
-    const unrestricted = arr.filter((f) => {
-      const lv = assessRisk(f.audits).level; return lv === 'critical' || lv === 'high';
-    }).length;
+
+    // Per-domain status breakdown.
+    const c = { critical: 0, high: 0, restricted: 0, closed: 0, unaudited: 0 };
+    arr.forEach((f) => {
+      if (!f.audits || !f.audits.length) { c.unaudited++; return; }
+      const lv = assessRisk(f.audits).level;
+      if (lv === 'critical') c.critical++;
+      else if (lv === 'high') c.high++;
+      else if (lv === 'restricted') c.restricted++;
+      else c.closed++;
+    });
+    const stat = (n, cls, label) => n ? '<span class="gh-stat ' + cls + '">' + n + ' ' + label + '</span>' : '';
+    const statusHtml =
+      stat(c.critical, 'critical', 'critical') +
+      stat(c.high, 'high', 'unrestricted') +
+      stat(c.restricted, 'restricted', 'restricted') +
+      stat(c.closed, 'closed', 'no access') +
+      stat(c.unaudited, 'unaudited', 'unaudited');
 
     const hdr = document.createElement('tr');
     hdr.className = 'group-header';
@@ -409,7 +424,22 @@ async function render() {
       '<span class="gh-seq">#' + (gi + 1) + '</span>' +
       '<span class="gh-domain">' + esc(domain) + '</span>' +
       '<span class="gh-count">' + arr.length + ' key' + (arr.length > 1 ? 's' : '') + '</span>' +
-      (unrestricted ? '<span class="gh-alert">⚠ ' + unrestricted + ' unrestricted</span>' : '');
+      '<span class="gh-status">' + statusHtml + '</span>';
+
+    const right = document.createElement('div');
+    right.className = 'gh-right';
+
+    if (domain && domain !== 'unknown') {
+      const ignoreBtn = document.createElement('button');
+      ignoreBtn.className = 'btn ghost small gh-ignore';
+      ignoreBtn.textContent = '🚫 Ignore domain';
+      ignoreBtn.title = 'Stop logging keys from ' + domain + ' and remove its existing keys';
+      ignoreBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        ignoreDomain(domain);
+      });
+      right.appendChild(ignoreBtn);
+    }
 
     const auditAllBtn = document.createElement('button');
     auditAllBtn.className = 'btn small gh-audit';
@@ -418,9 +448,10 @@ async function render() {
       e.stopPropagation();           // don't toggle the accordion
       auditGroup(arr.slice(), auditAllBtn);
     });
+    right.appendChild(auditAllBtn);
 
     td.appendChild(left);
-    td.appendChild(auditAllBtn);
+    td.appendChild(right);
     hdr.appendChild(td);
     hdr.addEventListener('click', () => {
       if (collapsed) collapsedGroups.delete(domain); else collapsedGroups.add(domain);
@@ -465,6 +496,21 @@ async function auditGroup(findings, btn) {
   btn.textContent = label;
   render();
   toast('Audited ' + done + ' keys in this domain');
+}
+
+// Add a domain to the ignore list AND remove its already-logged keys
+// (delete + ignore in one action).
+async function ignoreDomain(domain) {
+  if (!domain || domain === 'unknown') return;
+  if (!window.confirm('Ignore "' + domain + '"?\n\nThis removes its currently logged keys and stops ' +
+    'detecting keys on this domain going forward. (Built-in defaults and your existing custom list are kept.)')) return;
+  const current = await getIgnoreDomains();
+  const saved = await setIgnoreDomains(current.concat(domain));
+  const res = await purgeIgnored(saved);
+  loadIgnore(); // refresh the settings textarea
+  render();
+  toast('Ignoring ' + domain + ' — removed ' + (res ? res.removed : 0) +
+    ' key' + ((res && res.removed === 1) ? '' : 's'));
 }
 
 // ---- Toolbar actions -------------------------------------------------------

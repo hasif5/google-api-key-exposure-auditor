@@ -97,8 +97,17 @@ tr.group-header td {
 }
 .gh-domain { font-weight: 700; color: var(--accent); }
 .gh-count { color: var(--muted); font-size: 11px; }
-.gh-alert { color: #ff8a8a; font-size: 11px; font-weight: 700; }
-.gh-audit { white-space: nowrap; flex: 0 0 auto; }
+.gh-status { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+.gh-stat { font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 10px; white-space: nowrap; }
+.gh-stat.critical { background: #e74c3c; color: #fff; }
+.gh-stat.high { background: #b9451d; color: #fff; }
+.gh-stat.restricted { background: #123a23; color: #7ee2a8; border: 1px solid #1d5a37; }
+.gh-stat.closed { background: #20262e; color: #9fb3c8; border: 1px solid #34404c; }
+.gh-stat.unaudited { background: var(--panel2); color: var(--muted); border: 1px solid var(--border); }
+.gh-right { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
+.gh-audit { white-space: nowrap; }
+.gh-ignore { white-space: nowrap; color: #f0a0a0; border-color: #5a2d2d; }
+.gh-ignore:hover { background: #3a1c1c; }
 
 .stats { display: flex; gap: 14px; flex-wrap: wrap; padding: 12px 20px; }
 .stat.alert { border-color: #5a2d2d; background: #2a1414; }
