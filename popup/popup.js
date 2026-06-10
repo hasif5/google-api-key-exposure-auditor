@@ -1,5 +1,7 @@
-import { getDb, findingId } from '../lib/store.js';
+import { getDb, findingId, getCollection, saveToCollection, removeFromCollection } from '../lib/store.js';
 import { assessRisk } from '../lib/audit.js';
+
+let savedKeys = new Set();
 
 const els = {
   origin: document.getElementById('origin'),
@@ -19,6 +21,11 @@ function openDashboard() {
 }
 document.getElementById('dashBtn').addEventListener('click', openDashboard);
 document.getElementById('dashBtn2').addEventListener('click', openDashboard);
+
+function openCollection() {
+  chrome.tabs.create({ url: chrome.runtime.getURL('collection/collection.html') });
+}
+document.getElementById('collBtn').addEventListener('click', openCollection);
 
 els.rescan.addEventListener('click', async () => {
   if (!activeTab) return;
@@ -109,6 +116,32 @@ function renderFinding(f) {
   auditBtn.disabled = !els.ack.checked;
   card.appendChild(auditBtn);
 
+  const saveBtn = document.createElement('button');
+  saveBtn.className = 'save-btn';
+  function paintSave() {
+    const on = savedKeys.has(f.key);
+    saveBtn.textContent = on ? '★ Saved' : '☆ Save';
+    saveBtn.classList.toggle('on', on);
+    saveBtn.title = on ? 'Remove from collection' : 'Save to my collection';
+  }
+  paintSave();
+  saveBtn.addEventListener('click', async () => {
+    saveBtn.disabled = true;
+    try {
+      if (savedKeys.has(f.key)) {
+        await removeFromCollection(f.key);
+        savedKeys.delete(f.key);
+      } else {
+        await saveToCollection(f);
+        savedKeys.add(f.key);
+      }
+      paintSave();
+    } finally {
+      saveBtn.disabled = false;
+    }
+  });
+  card.appendChild(saveBtn);
+
   const status = document.createElement('span');
   status.className = 'spinner';
   status.style.marginLeft = '8px';
@@ -134,6 +167,7 @@ function renderFinding(f) {
         auditsBox.classList.add('show');
         renderAudits(auditsBox, f.audits);
         updateRiskBanner(riskBanner, f.audits);
+        if (savedKeys.has(f.key)) saveToCollection(f); // refresh saved snapshot
         auditBtn.textContent = 'Re-audit key';
         status.textContent = '';
       } else {
@@ -201,6 +235,8 @@ function renderAudits(box, audits) {
 
 async function render() {
   const db = await getDb();
+  const coll = await getCollection();
+  savedKeys = new Set(coll.items.map((i) => i.key));
   let origin = '';
   try { origin = activeTab && activeTab.url ? new URL(activeTab.url).origin : ''; } catch (e) { origin = ''; }
   els.origin.textContent = origin || 'this page';

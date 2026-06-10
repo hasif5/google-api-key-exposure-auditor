@@ -38,6 +38,7 @@ IP / API enablement) can be assessed and reported.
 - **Restriction &amp; risk assessment.** Because probes carry no referrer and come from an arbitrary IP, any success means the key is **not** referrer/IP-locked. Unrestricted keys are flagged prominently (**CRITICAL / UNRESTRICTED**) and sorted to the top.
 - **Billing awareness.** Each probe is marked free vs billable with an approximate cost note. The default audit uses only **free** access checks; token-billing calls are strictly opt-in.
 - **Research dashboard** with a live progress bar, per-key detail, and **JSON / CSV export + import** for record-keeping.
+- **My Collection** — bookmark any key with a **Save** button; a dedicated, persistent collection page lets you revisit, annotate, re-audit, and export saved keys. It's stored separately, so it survives "Clear all".
 - **Resilient** — bounded retries with backoff on transient errors, concurrency limits, and size caps on bundle scanning.
 
 ## How it works
@@ -159,6 +160,7 @@ lib/
   audit.js              Maps / Gemini / Vertex probes + risk assessment
 popup/                  current-tab UI
 dashboard/              all-findings UI, audit, JSON/CSV export-import
+collection/             saved-keys page (revisit, annotate, re-audit, export)
 icons/                  extension icons
 ```
 

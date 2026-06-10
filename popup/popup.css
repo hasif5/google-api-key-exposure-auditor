@@ -122,6 +122,15 @@ body {
   border: 1px solid var(--border); border-radius: 6px;
   padding: 3px 7px; font-size: 11px; cursor: pointer;
 }
+.save-btn {
+  background: var(--panel2); color: var(--muted);
+  border: 1px solid var(--border); border-radius: 6px;
+  padding: 4px 9px; font-size: 11px; font-weight: 600; cursor: pointer;
+  margin-left: 6px;
+}
+.save-btn:hover { border-color: #f4c20d; color: #f0d27e; }
+.save-btn.on { background: #3a2f10; color: #f4c20d; border-color: #5a4a1d; }
+.save-btn:disabled { opacity: 0.5; cursor: default; }
 
 .audits { margin-top: 7px; display: none; }
 .audits.show { display: block; }

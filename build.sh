@@ -9,7 +9,7 @@ mkdir -p "$out"
 rm -f "$out/$name"
 
 zip -rq "$out/$name" \
-  manifest.json background.js content lib popup dashboard icons \
+  manifest.json background.js content lib popup dashboard collection icons \
   -x '*/.*'
 
 echo "Built $out/$name"

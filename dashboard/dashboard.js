@@ -1,5 +1,8 @@
-import { getDb, importDb, clearAll, deleteFinding } from '../lib/store.js';
+import { getDb, importDb, clearAll, deleteFinding,
+  getCollection, saveToCollection, removeFromCollection } from '../lib/store.js';
 import { assessRisk } from '../lib/audit.js';
+
+let savedKeys = new Set();
 
 const els = {
   rows: document.getElementById('rows'),
@@ -219,6 +222,23 @@ function buildRow(f) {
   const detailBtn = document.createElement('button');
   detailBtn.className = 'btn ghost';
   detailBtn.textContent = expanded.has(f.id) ? 'Hide details' : 'Details';
+  const saveBtn = document.createElement('button');
+  saveBtn.className = 'btn ghost save-btn';
+  const paintSave = () => {
+    const on = savedKeys.has(f.key);
+    saveBtn.textContent = on ? '★ Saved' : '☆ Save';
+    saveBtn.classList.toggle('on', on);
+    saveBtn.title = on ? 'Remove from collection' : 'Save to my collection';
+  };
+  paintSave();
+  saveBtn.addEventListener('click', async () => {
+    saveBtn.disabled = true;
+    try {
+      if (savedKeys.has(f.key)) { await removeFromCollection(f.key); savedKeys.delete(f.key); }
+      else { await saveToCollection(f); savedKeys.add(f.key); }
+      paintSave();
+    } finally { saveBtn.disabled = false; }
+  });
   const delBtn = document.createElement('button');
   delBtn.className = 'btn danger';
   delBtn.textContent = 'Delete';
@@ -229,7 +249,11 @@ function buildRow(f) {
     const updated = await runAudit(f.id, status);
     hideProgress();
     auditBtn.disabled = false;
-    if (updated) { status.textContent = ''; render(); }
+    if (updated) {
+      if (savedKeys.has(updated.key)) await saveToCollection(updated); // refresh saved snapshot
+      status.textContent = '';
+      render();
+    }
   });
   detailBtn.addEventListener('click', () => {
     if (expanded.has(f.id)) expanded.delete(f.id); else expanded.add(f.id);
@@ -242,6 +266,7 @@ function buildRow(f) {
   });
 
   actTd.appendChild(auditBtn);
+  actTd.appendChild(saveBtn);
   actTd.appendChild(detailBtn);
   actTd.appendChild(delBtn);
   actTd.appendChild(status);
@@ -289,6 +314,8 @@ let currentFindings = [];
 
 async function render() {
   const db = await getDb();
+  const coll = await getCollection();
+  savedKeys = new Set(coll.items.map((i) => i.key));
   currentFindings = db.findings.slice();
   const q = (els.filter.value || '').toLowerCase().trim();
   let items = currentFindings;
@@ -318,6 +345,10 @@ async function render() {
 }
 
 // ---- Toolbar actions -------------------------------------------------------
+
+document.getElementById('collBtn').addEventListener('click', () => {
+  chrome.tabs.create({ url: chrome.runtime.getURL('collection/collection.html') });
+});
 
 document.getElementById('exportBtn').addEventListener('click', async () => {
   const db = await getDb();
@@ -407,6 +438,11 @@ document.getElementById('auditAllBtn').addEventListener('click', async () => {
     showProgressDeterminate(done, total, 'Audited ' + done + ' / ' + total);
   }
   hideProgress();
+  // Refresh snapshots for any audited keys that are in the collection.
+  if (savedKeys.size) {
+    const db = await getDb();
+    for (const f of db.findings) if (savedKeys.has(f.key)) await saveToCollection(f);
+  }
   btn.disabled = false;
   btn.textContent = 'Audit all';
   render();

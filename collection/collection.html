@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="stylesheet" href="collection.css" />
+  <title>Google API Key Exposure Auditor — My Collection</title>
+</head>
+<body>
+  <header class="top">
+    <div class="brand"><span class="logo">⭐</span><h1>My Collection</h1></div>
+    <div class="toolbar">
+      <input type="search" id="filter" placeholder="Filter by key / origin / note…" />
+      <label class="chk" title="Adds billable generateContent calls (Gemini + Vertex)">
+        <input type="checkbox" id="genChk" /> billable probes
+      </label>
+      <button id="dashBtn" class="btn ghost">Dashboard</button>
+      <button id="exportBtn" class="btn ghost">Export JSON</button>
+      <label class="btn ghost file-label">Import JSON<input type="file" id="importFile" accept="application/json" hidden /></label>
+      <button id="clearBtn" class="btn danger">Clear collection</button>
+    </div>
+  </header>
+
+  <section class="intro">
+    Keys you save from the popup or dashboard are kept here permanently — separate
+    from auto-detected findings, so they survive “Clear all”. Add notes, re-audit,
+    or export them anytime.
+  </section>
+
+  <main id="list" class="list">
+    <p class="empty" id="emptyMsg">Your collection is empty. Click <strong>Save</strong> on any key in the popup or dashboard to add it here.</p>
+  </main>
+
+  <div id="toast" class="toast"></div>
+
+  <script type="module" src="collection.js"></script>
+</body>
+</html>

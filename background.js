@@ -143,6 +143,15 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return true;
   }
 
+  if (msg.type === 'GAKS_AUDIT_RAW') {
+    const key = msg.key;
+    if (!key || !KEY_RE.test(key)) { sendResponse({ ok: false, error: 'invalid key' }); return true; }
+    auditKey(key, { includeGenerate: !!msg.includeGenerate })
+      .then((audits) => sendResponse({ ok: true, audits }))
+      .catch((e) => sendResponse({ ok: false, error: String(e && e.message || e) }));
+    return true;
+  }
+
   if (msg.type === 'GAKS_GET_DB') {
     getDb().then((db) => sendResponse({ ok: true, db })).catch(() => sendResponse({ ok: false }));
     return true;

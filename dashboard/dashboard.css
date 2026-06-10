@@ -150,6 +150,8 @@ tr.row-high td { background: #1d1611; }
 
 .actions { display: flex; flex-direction: column; gap: 6px; }
 .actions .btn { padding: 5px 9px; }
+.save-btn.on { background: #3a2f10; color: #f4c20d; border-color: #5a4a1d; }
+.save-btn:hover { border-color: #f4c20d; }
 
 .detail-row td { background: #11151a; }
 .detail-table { width: 100%; border-collapse: collapse; }

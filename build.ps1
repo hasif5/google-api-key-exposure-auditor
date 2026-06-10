@@ -8,7 +8,7 @@ Add-Type -AssemblyName System.IO.Compression.FileSystem | Out-Null
 $root  = (Get-Location).Path
 $out   = 'dist'
 $name  = 'google-api-key-exposure-auditor-store.zip'
-$items = @('manifest.json', 'background.js', 'content', 'lib', 'popup', 'dashboard', 'icons')
+$items = @('manifest.json', 'background.js', 'content', 'lib', 'popup', 'dashboard', 'collection', 'icons')
 
 New-Item -ItemType Directory -Force $out | Out-Null
 $zipPath = Join-Path $out $name
