@@ -74,6 +74,14 @@ async function hydrateTabKeys() {
     const res = await chrome.storage.session.get(TABKEYS_SESSION);
     const obj = res[TABKEYS_SESSION] || {};
     for (const [tid, arr] of Object.entries(obj)) tabKeys.set(Number(tid), new Set(arr));
+    // Drop entries for tabs that no longer exist (stale across worker restarts).
+    const tabs = await chrome.tabs.query({});
+    const alive = new Set(tabs.map((t) => t.id));
+    let changed = false;
+    for (const tid of Array.from(tabKeys.keys())) {
+      if (!alive.has(tid)) { tabKeys.delete(tid); changed = true; }
+    }
+    if (changed) persistTabKeys();
   } catch (e) { /* session storage unavailable */ }
 }
 const ready = hydrateTabKeys();
@@ -93,8 +101,9 @@ function updateBadge(tabId) {
   if (tabId == null || tabId < 0) return;
   const set = tabKeys.get(tabId);
   const count = set ? set.size : 0;
-  chrome.action.setBadgeText({ tabId, text: count ? String(count) : '' });
-  chrome.action.setBadgeBackgroundColor({ tabId, color: '#c0392b' });
+  // These reject with "No tab with id" if the tab has since closed — ignore.
+  Promise.resolve(chrome.action.setBadgeText({ tabId, text: count ? String(count) : '' })).catch(() => {});
+  Promise.resolve(chrome.action.setBadgeBackgroundColor({ tabId, color: '#c0392b' })).catch(() => {});
 }
 
 function noteKeyForTab(tabId, key) {
