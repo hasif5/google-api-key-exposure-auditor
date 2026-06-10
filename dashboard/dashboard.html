@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="stylesheet" href="dashboard.css" />
+  <title>API Key Sniffer — Dashboard</title>
+</head>
+<body>
+  <header class="top">
+    <div class="brand"><span class="logo">🔑</span><h1>Google API Key Sniffer &mdash; Research Dashboard</h1></div>
+    <div class="toolbar">
+      <input type="search" id="filter" placeholder="Filter by key / origin…" />
+      <label class="chk" title="Adds billable generateContent calls (Gemini + Vertex) that consume tokens">
+        <input type="checkbox" id="genChk" /> include billable generation probes
+      </label>
+      <button id="auditAllBtn" class="btn">Audit all</button>
+      <button id="exportBtn" class="btn ghost">Export JSON</button>
+      <button id="csvBtn" class="btn ghost">Export CSV</button>
+      <label class="btn ghost file-label">Import JSON<input type="file" id="importFile" accept="application/json" hidden /></label>
+      <button id="clearBtn" class="btn danger">Clear all</button>
+    </div>
+  </header>
+
+  <section class="warn">
+    <strong>Authorized research use only.</strong> The audit performs live requests to Google
+    (Maps, Gemini, Vertex AI) using each discovered key. These calls may incur cost to the key
+    owner — run them only against keys you are authorized to test.
+  </section>
+
+  <div id="progress" class="progress" hidden>
+    <div class="progress-track"><div id="progressBar" class="progress-bar"></div></div>
+    <span id="progressLabel" class="progress-label"></span>
+  </div>
+
+  <section class="stats" id="stats"></section>
+
+  <main>
+    <table id="tbl">
+      <thead>
+        <tr>
+          <th>Risk</th>
+          <th>Key</th>
+          <th>Origin</th>
+          <th>Sources</th>
+          <th>Maps</th>
+          <th>Audit summary</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+    <p class="empty" id="emptyMsg">No keys logged yet. Browse sites with the extension enabled, then return here.</p>
+  </main>
+
+  <div id="toast" class="toast"></div>
+
+  <script type="module" src="dashboard.js"></script>
+</body>
+</html>

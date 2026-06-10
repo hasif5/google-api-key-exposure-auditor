@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="stylesheet" href="popup.css" />
+  <title>Google API Key Sniffer</title>
+</head>
+<body>
+  <header class="hdr">
+    <div class="hdr-title">
+      <span class="logo">🔑</span>
+      <div>
+        <h1>API Key Sniffer</h1>
+        <span class="sub" id="origin">—</span>
+      </div>
+    </div>
+    <div class="hdr-actions">
+      <button id="rescanBtn" class="icon-btn" title="Re-scan this page">⟳</button>
+      <button id="dashBtn" class="icon-btn" title="Open dashboard">▤</button>
+    </div>
+  </header>
+
+  <section class="warn" id="warnBanner">
+    <p><strong>Authorized research use only.</strong> Auditing makes real API calls to Google
+      that may incur cost to the key owner. Only audit keys you are permitted to test.</p>
+    <label class="ack">
+      <input type="checkbox" id="ackChk" />
+      I am authorized to audit the keys shown below.
+    </label>
+  </section>
+
+  <div class="opts">
+    <label title="Adds billable generateContent calls (Gemini + Vertex) that consume tokens">
+      <input type="checkbox" id="genChk" />
+      Include billable generation probes (Gemini + Vertex)
+    </label>
+  </div>
+
+  <main id="list" class="list">
+    <p class="empty" id="emptyMsg">No Google API keys detected on this page yet.</p>
+  </main>
+
+  <footer class="ftr">
+    <span id="count">0 keys</span>
+    <button id="dashBtn2" class="link-btn">Open full dashboard →</button>
+  </footer>
+
+  <script type="module" src="popup.js"></script>
+</body>
+</html>

@@ -1,0 +1,79 @@
+/*
+ * patterns.js — shared detection helpers for the content-script world.
+ *
+ * Loaded as the first content script so `content.js` can use `GAKS` directly.
+ * Declared with `var` (not const/let) so the binding is shared across the
+ * content scripts that run in the same isolated world.
+ */
+var GAKS = (function () {
+  // Google API keys: literal "AIza" followed by 35 chars from [A-Za-z0-9_-].
+  // Global + multiline so we can iterate every occurrence in a blob.
+  var KEY_RE = /AIza[0-9A-Za-z_\-]{35}/g;
+
+  // Substrings that mark a Google Maps usage context near a key.
+  var MAPS_HINTS = [
+    'maps.googleapis.com',
+    'maps.google.com',
+    'maps.gstatic.com',
+    '/maps/api/',
+    'staticmap',
+    '/maps/embed',
+    'google.maps',
+    'gmaps'
+  ];
+
+  // Single-key validity check (anchored), used to validate user/network input.
+  var SINGLE_KEY_RE = /^AIza[0-9A-Za-z_\-]{35}$/;
+
+  function isMapsContext(text) {
+    if (!text) return false;
+    var lower = String(text).toLowerCase();
+    for (var i = 0; i < MAPS_HINTS.length; i++) {
+      if (lower.indexOf(MAPS_HINTS[i]) !== -1) return true;
+    }
+    return false;
+  }
+
+  function snippetAround(text, index, keyLen, radius) {
+    radius = radius || 60;
+    var start = Math.max(0, index - radius);
+    var end = Math.min(text.length, index + keyLen + radius);
+    var slice = text.slice(start, end).replace(/\s+/g, ' ').trim();
+    return (start > 0 ? '…' : '') + slice + (end < text.length ? '…' : '');
+  }
+
+  // Returns an array of { key, snippet, mapsContext } for every key in `text`.
+  // `source` is just carried through for the caller's convenience.
+  function findInText(text) {
+    var out = [];
+    if (!text) return out;
+    var seen = Object.create(null);
+    KEY_RE.lastIndex = 0;
+    var m;
+    while ((m = KEY_RE.exec(text)) !== null) {
+      var key = m[0];
+      var snippet = snippetAround(text, m.index, key.length);
+      // De-dupe within this blob, but keep the first maps-context snippet.
+      if (seen[key]) {
+        if (!seen[key].mapsContext && isMapsContext(snippet)) {
+          seen[key].mapsContext = true;
+          seen[key].snippet = snippet;
+        }
+        continue;
+      }
+      var rec = { key: key, snippet: snippet, mapsContext: isMapsContext(snippet) };
+      seen[key] = rec;
+      out.push(rec);
+    }
+    return out;
+  }
+
+  return {
+    KEY_RE: KEY_RE,
+    SINGLE_KEY_RE: SINGLE_KEY_RE,
+    MAPS_HINTS: MAPS_HINTS,
+    isMapsContext: isMapsContext,
+    findInText: findInText,
+    snippetAround: snippetAround
+  };
+})();

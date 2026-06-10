@@ -1,0 +1,8 @@
+# Normalize line endings: text files use LF in the repo, checked out natively.
+* text=auto eol=lf
+
+# Treat binary assets as binary (never normalize).
+*.png binary
+*.crx binary
+*.pem binary
+*.zip binary

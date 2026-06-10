@@ -1,0 +1,423 @@
+import { getDb, importDb, clearAll, deleteFinding } from '../lib/store.js';
+import { assessRisk } from '../lib/audit.js';
+
+const els = {
+  rows: document.getElementById('rows'),
+  empty: document.getElementById('emptyMsg'),
+  stats: document.getElementById('stats'),
+  filter: document.getElementById('filter'),
+  gen: document.getElementById('genChk'),
+  toast: document.getElementById('toast'),
+  progress: document.getElementById('progress'),
+  progressBar: document.getElementById('progressBar'),
+  progressLabel: document.getElementById('progressLabel')
+};
+
+// ---- Progress bar ----------------------------------------------------------
+
+function showProgressDeterminate(current, total, label) {
+  els.progress.hidden = false;
+  els.progressBar.classList.remove('indeterminate');
+  const pct = total ? Math.round((current / total) * 100) : 0;
+  els.progressBar.style.width = pct + '%';
+  els.progressLabel.textContent = label || (current + ' / ' + total);
+}
+
+function showProgressIndeterminate(label) {
+  els.progress.hidden = false;
+  els.progressBar.classList.add('indeterminate');
+  els.progressBar.style.width = '';
+  els.progressLabel.textContent = label || 'Auditing…';
+}
+
+function hideProgress() {
+  els.progress.hidden = true;
+  els.progressBar.classList.remove('indeterminate');
+  els.progressBar.style.width = '0%';
+  els.progressLabel.textContent = '';
+}
+
+let consented = false;
+const expanded = new Set();
+
+function toast(msg) {
+  els.toast.textContent = msg;
+  els.toast.classList.add('show');
+  setTimeout(() => els.toast.classList.remove('show'), 2200);
+}
+
+function ensureConsent() {
+  if (consented) return true;
+  const ok = window.confirm(
+    'Active audit makes REAL API calls to Google (Maps, Gemini, Vertex AI) using the ' +
+    'selected key(s). These calls may incur cost to the key owner.\n\n' +
+    'Only proceed for keys you are authorized to test. Continue?'
+  );
+  if (ok) consented = true;
+  return ok;
+}
+
+function fmtTime(iso) {
+  if (!iso) return '';
+  try { return new Date(iso).toLocaleString(); } catch (e) { return iso; }
+}
+
+function classLabel(c) { return c.replace(/-/g, ' '); }
+
+function auditSummary(audits) {
+  const wrap = document.createElement('div');
+  wrap.className = 'summary';
+  if (!audits || !audits.length) {
+    const s = document.createElement('span');
+    s.className = 'tag';
+    s.textContent = 'not audited';
+    wrap.appendChild(s);
+    return wrap;
+  }
+  audits.forEach((a) => {
+    const p = document.createElement('span');
+    p.className = 'pill ' + a.classification;
+    p.title = a.service + ' · ' + a.endpoint + ' — HTTP ' + a.httpStatus + ' ' + (a.detail || '');
+    p.textContent = a.service.split(' ')[0] + ': ' + classLabel(a.classification);
+    wrap.appendChild(p);
+  });
+  return wrap;
+}
+
+function detailTable(f) {
+  const td = document.createElement('td');
+  td.colSpan = 7;
+  const tbl = document.createElement('table');
+  tbl.className = 'detail-table';
+  tbl.innerHTML =
+    '<thead><tr><th>Service</th><th>Endpoint</th><th>HTTP</th><th>API status</th>' +
+    '<th>Classification</th><th>Billing</th><th>Detail</th><th>When</th></tr></thead>';
+  const body = document.createElement('tbody');
+  (f.audits || []).forEach((a) => {
+    const billCell = a.billable
+      ? '<span class="pill billable">billable</span>'
+      : '<span class="pill enabled">free</span>';
+    const tr = document.createElement('tr');
+    tr.innerHTML =
+      '<td>' + esc(a.service) + '</td>' +
+      '<td>' + esc(a.endpoint) + '</td>' +
+      '<td class="mono">' + esc(String(a.httpStatus)) + '</td>' +
+      '<td class="mono">' + esc(a.apiStatus || '') + '</td>' +
+      '<td><span class="pill ' + a.classification + '">' + classLabel(a.classification) + '</span></td>' +
+      '<td>' + billCell + '<div class="seen">' + esc(a.costNote || '') + '</div></td>' +
+      '<td>' + esc(a.detail || '') + '</td>' +
+      '<td class="seen">' + esc(fmtTime(a.ts)) + '</td>';
+    body.appendChild(tr);
+  });
+  if (!(f.audits || []).length) {
+    body.innerHTML = '<tr><td colspan="8" class="seen">No audit has been run for this key.</td></tr>';
+  }
+  tbl.appendChild(body);
+  td.appendChild(tbl);
+  return td;
+}
+
+function esc(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+async function runAudit(findingId, statusEl) {
+  if (!ensureConsent()) return null;
+  if (statusEl) statusEl.textContent = 'auditing…';
+  try {
+    const resp = await chrome.runtime.sendMessage({
+      type: 'GAKS_AUDIT',
+      findingId,
+      includeGenerate: els.gen.checked
+    });
+    if (resp && resp.ok) return resp.finding;
+    if (statusEl) statusEl.textContent = 'failed';
+    return null;
+  } catch (e) {
+    if (statusEl) statusEl.textContent = 'error';
+    return null;
+  }
+}
+
+function buildRow(f) {
+  const tr = document.createElement('tr');
+  const risk = assessRisk(f.audits);
+  if (risk.level === 'critical') tr.className = 'row-critical';
+  else if (risk.level === 'high') tr.className = 'row-high';
+
+  // Risk cell (prominent flag for unrestricted keys)
+  const riskTd = document.createElement('td');
+  const riskBadge = document.createElement('span');
+  riskBadge.className = 'risk ' + risk.level;
+  riskBadge.textContent = risk.level === 'critical' ? 'CRITICAL'
+    : risk.level === 'high' ? 'UNRESTRICTED'
+    : risk.level === 'restricted' ? 'RESTRICTED'
+    : 'UNKNOWN';
+  riskTd.appendChild(riskBadge);
+  const riskSub = document.createElement('span');
+  riskSub.className = 'risk-sub';
+  riskSub.textContent = risk.enabledServices.length
+    ? 'reachable: ' + risk.enabledServices.join(', ')
+    : risk.label;
+  riskTd.appendChild(riskSub);
+
+  // Key cell
+  const keyTd = document.createElement('td');
+  const keyWrap = document.createElement('div');
+  keyWrap.className = 'key';
+  const code = document.createElement('span');
+  code.textContent = f.key;
+  const copy = document.createElement('button');
+  copy.className = 'copy-btn';
+  copy.textContent = 'copy';
+  copy.addEventListener('click', () => {
+    navigator.clipboard.writeText(f.key);
+    toast('Key copied');
+  });
+  keyWrap.appendChild(code);
+  keyWrap.appendChild(copy);
+  keyTd.appendChild(keyWrap);
+
+  // Origins (a key can appear on several)
+  const origTd = document.createElement('td');
+  origTd.className = 'origin';
+  const origins = f.origins || [];
+  const originHtml = origins.length
+    ? origins.map((o) => esc(o)).join('<br>')
+    : '<span class="no">unknown</span>';
+  origTd.innerHTML = originHtml +
+    (origins.length > 1 ? '<div class="seen">' + origins.length + ' origins</div>' : '') +
+    '<div class="seen">first ' + esc(fmtTime(f.firstSeen)) + '</div>' +
+    '<div class="seen">last ' + esc(fmtTime(f.lastSeen)) + '</div>';
+
+  // Sources
+  const srcTd = document.createElement('td');
+  (f.sources || []).forEach((s) => {
+    const t = document.createElement('span');
+    t.className = 'tag src-' + s;
+    t.textContent = s;
+    srcTd.appendChild(t);
+  });
+
+  // Maps context
+  const mapsTd = document.createElement('td');
+  mapsTd.innerHTML = f.mapsContext ? '<span class="yes">yes</span>' : '<span class="no">no</span>';
+
+  // Audit summary
+  const sumTd = document.createElement('td');
+  sumTd.appendChild(auditSummary(f.audits));
+
+  // Actions
+  const actTd = document.createElement('td');
+  actTd.className = 'actions';
+  const auditBtn = document.createElement('button');
+  auditBtn.className = 'btn';
+  auditBtn.textContent = (f.audits && f.audits.length) ? 'Re-audit' : 'Audit';
+  const status = document.createElement('span');
+  status.className = 'spinner';
+  const detailBtn = document.createElement('button');
+  detailBtn.className = 'btn ghost';
+  detailBtn.textContent = expanded.has(f.id) ? 'Hide details' : 'Details';
+  const delBtn = document.createElement('button');
+  delBtn.className = 'btn danger';
+  delBtn.textContent = 'Delete';
+
+  auditBtn.addEventListener('click', async () => {
+    auditBtn.disabled = true;
+    showProgressIndeterminate('Auditing ' + f.key.slice(0, 14) + '…');
+    const updated = await runAudit(f.id, status);
+    hideProgress();
+    auditBtn.disabled = false;
+    if (updated) { status.textContent = ''; render(); }
+  });
+  detailBtn.addEventListener('click', () => {
+    if (expanded.has(f.id)) expanded.delete(f.id); else expanded.add(f.id);
+    render();
+  });
+  delBtn.addEventListener('click', async () => {
+    if (!window.confirm('Delete this finding and its audit history?')) return;
+    await deleteFinding(f.id);
+    render();
+  });
+
+  actTd.appendChild(auditBtn);
+  actTd.appendChild(detailBtn);
+  actTd.appendChild(delBtn);
+  actTd.appendChild(status);
+
+  tr.appendChild(riskTd);
+  tr.appendChild(keyTd);
+  tr.appendChild(origTd);
+  tr.appendChild(srcTd);
+  tr.appendChild(mapsTd);
+  tr.appendChild(sumTd);
+  tr.appendChild(actTd);
+  return tr;
+}
+
+function renderStats(findings) {
+  const total = findings.length;
+  const maps = findings.filter((f) => f.mapsContext).length;
+  const audited = findings.filter((f) => f.audits && f.audits.length).length;
+  let unrestricted = 0, billable = 0;
+  findings.forEach((f) => {
+    const r = assessRisk(f.audits);
+    if (r.level === 'critical' || r.level === 'high') unrestricted++;
+    if (r.billableEnabled) billable++;
+  });
+  const data = [
+    { n: total, l: 'keys found' },
+    { n: maps, l: 'maps-context' },
+    { n: audited, l: 'audited' },
+    { n: unrestricted, l: 'UNRESTRICTED', alert: unrestricted > 0 },
+    { n: billable, l: 'billable reachable', alert: billable > 0 }
+  ];
+  els.stats.innerHTML = '';
+  data.forEach((d) => {
+    const div = document.createElement('div');
+    div.className = 'stat' + (d.alert ? ' alert' : '');
+    div.innerHTML = '<div class="n">' + d.n + '</div><div class="l">' + d.l + '</div>';
+    els.stats.appendChild(div);
+  });
+}
+
+// Risk ordering: most dangerous keys float to the top.
+const RISK_RANK = { critical: 0, high: 1, restricted: 2, unknown: 3 };
+
+let currentFindings = [];
+
+async function render() {
+  const db = await getDb();
+  currentFindings = db.findings.slice();
+  const q = (els.filter.value || '').toLowerCase().trim();
+  let items = currentFindings;
+  if (q) {
+    items = items.filter((f) =>
+      f.key.toLowerCase().includes(q) ||
+      (f.origins || []).some((o) => o.toLowerCase().includes(q)));
+  }
+  items.sort((a, b) =>
+    (RISK_RANK[assessRisk(a.audits).level] - RISK_RANK[assessRisk(b.audits).level]) ||
+    (b.mapsContext - a.mapsContext) ||
+    (new Date(b.lastSeen) - new Date(a.lastSeen)));
+
+  renderStats(currentFindings);
+  els.rows.innerHTML = '';
+  els.empty.style.display = items.length ? 'none' : 'block';
+
+  items.forEach((f) => {
+    els.rows.appendChild(buildRow(f));
+    if (expanded.has(f.id)) {
+      const dr = document.createElement('tr');
+      dr.className = 'detail-row';
+      dr.appendChild(detailTable(f));
+      els.rows.appendChild(dr);
+    }
+  });
+}
+
+// ---- Toolbar actions -------------------------------------------------------
+
+document.getElementById('exportBtn').addEventListener('click', async () => {
+  const db = await getDb();
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const blob = new Blob([JSON.stringify(db, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'gaks-findings-' + stamp + '.json';
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  toast('Exported ' + db.findings.length + ' findings');
+});
+
+document.getElementById('csvBtn').addEventListener('click', async () => {
+  const db = await getDb();
+  const cols = ['key', 'origins', 'sources', 'mapsContext', 'risk', 'firstSeen', 'lastSeen',
+    'service', 'endpoint', 'httpStatus', 'apiStatus', 'classification', 'billable', 'costNote', 'detail', 'auditTs'];
+  const rows = [cols];
+  db.findings.forEach((f) => {
+    const risk = assessRisk(f.audits).level;
+    const base = [f.key, (f.origins || []).join(' '), (f.sources || []).join(' '), f.mapsContext,
+      risk, f.firstSeen || '', f.lastSeen || ''];
+    if (f.audits && f.audits.length) {
+      f.audits.forEach((a) => {
+        rows.push(base.concat([a.service, a.endpoint, a.httpStatus, a.apiStatus,
+          a.classification, a.billable, a.costNote, a.detail, a.ts]));
+      });
+    } else {
+      rows.push(base.concat(['', '', '', '', 'not-audited', '', '', '', '']));
+    }
+  });
+  const csv = rows.map((r) => r.map(csvCell).join(',')).join('\r\n');
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'gaks-findings-' + stamp + '.csv';
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  toast('Exported CSV (' + (rows.length - 1) + ' rows)');
+});
+
+function csvCell(v) {
+  const s = String(v == null ? '' : v);
+  return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+
+document.getElementById('importFile').addEventListener('change', async (ev) => {
+  const file = ev.target.files && ev.target.files[0];
+  if (!file) return;
+  try {
+    const text = await file.text();
+    const data = JSON.parse(text);
+    const res = await importDb(data);
+    toast('Imported / merged ' + (res ? res.merged : 0) + ' findings');
+    render();
+  } catch (e) {
+    toast('Import failed: invalid JSON');
+  }
+  ev.target.value = '';
+});
+
+document.getElementById('clearBtn').addEventListener('click', async () => {
+  if (!window.confirm('Permanently delete ALL logged findings and audit history?')) return;
+  await clearAll();
+  expanded.clear();
+  render();
+  toast('Cleared all findings');
+});
+
+document.getElementById('auditAllBtn').addEventListener('click', async () => {
+  if (!currentFindings.length) { toast('Nothing to audit'); return; }
+  if (!ensureConsent()) return;
+  const btn = document.getElementById('auditAllBtn');
+  const queue = currentFindings.slice();
+  const total = queue.length;
+  btn.disabled = true;
+  let done = 0;
+  showProgressDeterminate(0, total, 'Auditing 0 / ' + total);
+  for (const f of queue) {
+    showProgressDeterminate(done, total, 'Auditing ' + (done + 1) + ' / ' + total + '  (' + f.key.slice(0, 14) + '…)');
+    btn.textContent = 'Auditing ' + (done + 1) + '/' + total + '…';
+    await runAudit(f.id, null);
+    done++;
+    showProgressDeterminate(done, total, 'Audited ' + done + ' / ' + total);
+  }
+  hideProgress();
+  btn.disabled = false;
+  btn.textContent = 'Audit all';
+  render();
+  toast('Audited ' + done + ' keys');
+});
+
+els.filter.addEventListener('input', render);
+
+// Re-render if storage changes while the dashboard is open.
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === 'local' && changes.gaks_db) render();
+});
+
+render();

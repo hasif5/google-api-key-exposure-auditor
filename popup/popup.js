@@ -1,0 +1,234 @@
+import { getDb, findingId } from '../lib/store.js';
+import { assessRisk } from '../lib/audit.js';
+
+const els = {
+  origin: document.getElementById('origin'),
+  list: document.getElementById('list'),
+  empty: document.getElementById('emptyMsg'),
+  count: document.getElementById('count'),
+  ack: document.getElementById('ackChk'),
+  gen: document.getElementById('genChk'),
+  rescan: document.getElementById('rescanBtn')
+};
+
+let activeTab = null;
+let auditing = new Set();
+
+function openDashboard() {
+  chrome.tabs.create({ url: chrome.runtime.getURL('dashboard/dashboard.html') });
+}
+document.getElementById('dashBtn').addEventListener('click', openDashboard);
+document.getElementById('dashBtn2').addEventListener('click', openDashboard);
+
+els.rescan.addEventListener('click', async () => {
+  if (!activeTab) return;
+  try {
+    await chrome.tabs.sendMessage(activeTab.id, { type: 'GAKS_RESCAN' });
+  } catch (e) { /* content script may not be present */ }
+  setTimeout(render, 700);
+});
+
+// Persisted toggles.
+chrome.storage.local.get(['gaks_ack', 'gaks_gen']).then((s) => {
+  els.ack.checked = !!s.gaks_ack;
+  els.gen.checked = !!s.gaks_gen;
+  refreshAuditButtons();
+});
+els.ack.addEventListener('change', () => {
+  chrome.storage.local.set({ gaks_ack: els.ack.checked });
+  refreshAuditButtons();
+});
+els.gen.addEventListener('change', () => {
+  chrome.storage.local.set({ gaks_gen: els.gen.checked });
+});
+
+function refreshAuditButtons() {
+  const enabled = els.ack.checked;
+  document.querySelectorAll('.audit-btn').forEach((b) => {
+    if (!auditing.has(b.dataset.id)) b.disabled = !enabled;
+  });
+}
+
+function classLabel(c) {
+  return c.replace(/-/g, ' ');
+}
+
+function renderFinding(f) {
+  const card = document.createElement('div');
+  card.className = 'card';
+
+  const top = document.createElement('div');
+  top.className = 'card-top';
+  const keyEl = document.createElement('span');
+  keyEl.className = 'keyline';
+  keyEl.textContent = f.key;
+  const copyBtn = document.createElement('button');
+  copyBtn.className = 'copy-btn';
+  copyBtn.textContent = 'copy';
+  copyBtn.addEventListener('click', () => {
+    navigator.clipboard.writeText(f.key);
+    copyBtn.textContent = 'copied';
+    setTimeout(() => (copyBtn.textContent = 'copy'), 1200);
+  });
+  top.appendChild(keyEl);
+  top.appendChild(copyBtn);
+  card.appendChild(top);
+
+  const tags = document.createElement('div');
+  tags.className = 'tags';
+  if (f.mapsContext) {
+    const t = document.createElement('span');
+    t.className = 'tag maps';
+    t.textContent = 'Maps context';
+    tags.appendChild(t);
+  }
+  (f.sources || []).forEach((s) => {
+    const t = document.createElement('span');
+    t.className = 'tag src-' + s;
+    t.textContent = s;
+    tags.appendChild(t);
+  });
+  card.appendChild(tags);
+
+  const riskBanner = document.createElement('div');
+  riskBanner.className = 'risk-banner';
+  updateRiskBanner(riskBanner, f.audits);
+  card.appendChild(riskBanner);
+
+  if (f.snippet) {
+    const sn = document.createElement('div');
+    sn.className = 'snippet';
+    sn.textContent = f.snippet;
+    card.appendChild(sn);
+  }
+
+  const auditBtn = document.createElement('button');
+  auditBtn.className = 'btn small audit-btn';
+  auditBtn.dataset.id = f.id;
+  auditBtn.textContent = f.audits && f.audits.length ? 'Re-audit key' : 'Audit key';
+  auditBtn.disabled = !els.ack.checked;
+  card.appendChild(auditBtn);
+
+  const status = document.createElement('span');
+  status.className = 'spinner';
+  status.style.marginLeft = '8px';
+  card.appendChild(status);
+
+  const auditsBox = document.createElement('div');
+  auditsBox.className = 'audits' + (f.audits && f.audits.length ? ' show' : '');
+  renderAudits(auditsBox, f.audits || []);
+  card.appendChild(auditsBox);
+
+  auditBtn.addEventListener('click', async () => {
+    auditing.add(f.id);
+    auditBtn.disabled = true;
+    status.textContent = 'auditing…';
+    try {
+      const resp = await chrome.runtime.sendMessage({
+        type: 'GAKS_AUDIT',
+        findingId: f.id,
+        includeGenerate: els.gen.checked
+      });
+      if (resp && resp.ok && resp.finding) {
+        f.audits = resp.finding.audits;
+        auditsBox.classList.add('show');
+        renderAudits(auditsBox, f.audits);
+        updateRiskBanner(riskBanner, f.audits);
+        auditBtn.textContent = 'Re-audit key';
+        status.textContent = '';
+      } else {
+        status.textContent = 'audit failed';
+      }
+    } catch (e) {
+      status.textContent = 'audit error';
+    } finally {
+      auditing.delete(f.id);
+      auditBtn.disabled = !els.ack.checked;
+    }
+  });
+
+  return card;
+}
+
+function updateRiskBanner(el, audits) {
+  const r = assessRisk(audits);
+  el.className = 'risk-banner';
+  if (!audits || !audits.length) return;
+  if (r.level === 'critical' || r.level === 'high' || r.level === 'restricted') {
+    el.classList.add('show', r.level);
+    const head = r.level === 'critical' ? '⚠ CRITICAL — UNRESTRICTED & BILLABLE'
+      : r.level === 'high' ? '⚠ UNRESTRICTED KEY'
+      : '✓ Restricted (referrer/IP locked)';
+    const sub = r.enabledServices.length ? 'reachable: ' + r.enabledServices.join(', ') : r.label;
+    el.innerHTML = head + '<span class="sub">' + sub + '</span>';
+  }
+}
+
+function renderAudits(box, audits) {
+  box.innerHTML = '';
+  audits.forEach((a) => {
+    const row = document.createElement('div');
+    row.className = 'audit-row';
+
+    const svc = document.createElement('span');
+    svc.className = 'audit-svc';
+    svc.textContent = a.service + ' · ' + a.endpoint;
+
+    const detail = document.createElement('span');
+    detail.className = 'audit-detail';
+    detail.textContent = (a.httpStatus ? 'HTTP ' + a.httpStatus + ' — ' : '') + (a.detail || a.apiStatus || '');
+
+    const pills = document.createElement('span');
+    const pill = document.createElement('span');
+    pill.className = 'pill ' + a.classification;
+    pill.textContent = classLabel(a.classification);
+    pills.appendChild(pill);
+    if (a.billable) {
+      const bp = document.createElement('span');
+      bp.className = 'pill billable';
+      bp.textContent = '$';
+      bp.title = a.costNote || 'Billable';
+      bp.style.marginLeft = '3px';
+      pills.appendChild(bp);
+    }
+
+    row.appendChild(svc);
+    row.appendChild(detail);
+    row.appendChild(pills);
+    box.appendChild(row);
+  });
+}
+
+async function render() {
+  const db = await getDb();
+  let origin = '';
+  try { origin = activeTab && activeTab.url ? new URL(activeTab.url).origin : ''; } catch (e) { origin = ''; }
+  els.origin.textContent = origin || 'this page';
+
+  const items = db.findings.filter((f) => (f.origins || []).includes(origin));
+  els.list.innerHTML = '';
+  if (!items.length) {
+    const p = document.createElement('p');
+    p.className = 'empty';
+    p.textContent = 'No Google API keys detected on this page yet.';
+    els.list.appendChild(p);
+  } else {
+    const rank = { critical: 0, high: 1, restricted: 2, unknown: 3 };
+    items
+      .sort((a, b) =>
+        (rank[assessRisk(a.audits).level] - rank[assessRisk(b.audits).level]) ||
+        (b.mapsContext - a.mapsContext) || a.key.localeCompare(b.key))
+      .forEach((f) => els.list.appendChild(renderFinding(f)));
+  }
+  els.count.textContent = items.length + (items.length === 1 ? ' key' : ' keys');
+}
+
+async function init() {
+  const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+  activeTab = tabs[0] || null;
+  await render();
+  // Findings can arrive shortly after the popup opens (async scans).
+  setTimeout(render, 1200);
+}
+
+init();

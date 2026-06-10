@@ -1,0 +1,58 @@
+# ---- Exported findings (may contain REAL leaked API keys — never commit) ----
+gaks-findings-*.json
+gaks-findings-*.csv
+*.findings.json
+
+# ---- Dependencies ----
+node_modules/
+jspm_packages/
+.pnp/
+.pnp.js
+
+# ---- Build / packaging output ----
+dist/
+build/
+out/
+web-ext-artifacts/
+*.zip
+*.crx
+*.pem
+*.xpi
+
+# ---- Logs ----
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ---- Environment / secrets ----
+.env
+.env.*
+*.local
+secrets.json
+
+# ---- Editor / IDE ----
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+*.swp
+*.swo
+*~
+
+# ---- OS cruft ----
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# ---- Misc caches ----
+.cache/
+.tmp/
+tmp/
