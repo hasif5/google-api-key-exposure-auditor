@@ -71,6 +71,8 @@ var GAKS = (function () {
   var PROVIDER_RES = [
     { id: 'google', re: /AIza[0-9A-Za-z_\-]{35}/g },
     { id: 'anthropic', re: /sk-ant-[A-Za-z0-9_-]{90,}/g },
+    { id: 'openrouter', re: /sk-or-(?:v1-)?[A-Za-z0-9]{40,}/g },
+    { id: 'xai', re: /xai-[A-Za-z0-9]{40,}/g },
     { id: 'openai', re: /sk-(?:proj|svcacct|admin)-[A-Za-z0-9_-]{20,}|sk-[A-Za-z0-9]{40,}/g }
   ];
 

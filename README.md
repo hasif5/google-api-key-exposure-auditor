@@ -26,7 +26,7 @@ IP / API enablement) can be assessed and reported.
 
 ## Features
 
-- **Multi-provider detection** — Google `AIza…`, OpenAI `sk-…` / `sk-proj-…`, and Anthropic `sk-ant-…` keys, each tagged with a provider badge.
+- **Multi-provider detection** — Google `AIza…`, OpenAI `sk-…` / `sk-proj-…`, Anthropic `sk-ant-…`, OpenRouter `sk-or-…`, and xAI `xai-…` keys, each tagged with a provider badge. Bearer-token keys (OpenAI/Anthropic/OpenRouter/xAI) are validated against each provider's API — a valid one is unconditionally **critical**.
 - **Passive detection across every surface** a key can hide in:
   - Rendered DOM / inline scripts / element attributes (`<script>`, `<iframe>`, `<img>`, `<link>`)
   - **External JavaScript bundles** — linked `.js` files are fetched and scanned (most leaked keys live in minified bundles, not inline HTML)

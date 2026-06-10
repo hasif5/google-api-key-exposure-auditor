@@ -157,7 +157,7 @@ chrome.webRequest.onBeforeSendHeaders.addListener(
 );
 
 // OpenAI / Anthropic keys travel in Authorization: Bearer / x-api-key headers.
-const BEARER_KEY_RE = /(sk-ant-[A-Za-z0-9_-]{90,}|sk-(?:proj|svcacct|admin)-[A-Za-z0-9_-]{20,}|sk-[A-Za-z0-9]{40,})/;
+const BEARER_KEY_RE = /(sk-ant-[A-Za-z0-9_-]{90,}|sk-or-(?:v1-)?[A-Za-z0-9]{40,}|xai-[A-Za-z0-9]{40,}|sk-(?:proj|svcacct|admin)-[A-Za-z0-9_-]{20,}|sk-[A-Za-z0-9]{40,})/;
 chrome.webRequest.onBeforeSendHeaders.addListener(
   (details) => {
     if (pageIgnored(details.initiator)) return;
@@ -182,7 +182,7 @@ chrome.webRequest.onBeforeSendHeaders.addListener(
       noteKeyForTab(details.tabId, key);
     }
   },
-  { urls: ['*://api.openai.com/*', '*://api.anthropic.com/*'] },
+  { urls: ['*://api.openai.com/*', '*://api.anthropic.com/*', '*://api.x.ai/*', '*://openrouter.ai/*'] },
   ['requestHeaders']
 );
 
