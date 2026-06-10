@@ -27,6 +27,19 @@ function groupDomainOf(f) {
   return (f.origins && f.origins.length) ? hostOf(f.origins[0]) : 'unknown';
 }
 
+// Plain-language meaning of each classification (for tooltips + legend).
+const CLASS_HELP = {
+  'enabled': 'Reachable with NO Referer — the key works for this API from anywhere (exploitable)',
+  'restricted-referer': 'Blocked by an HTTP-referrer restriction (key is locked to specific sites)',
+  'restricted-ip': 'Blocked by an IP-address restriction',
+  'api-not-enabled': 'This API is not enabled / not allowed for this key',
+  'invalid-key': 'Key is invalid, expired, or revoked',
+  'over-quota': 'Valid, but a quota/billing limit was hit',
+  'inconclusive': 'Could not be determined from a server-side request',
+  'denied': 'Rejected for another reason',
+  'error': 'Network/transport error reaching the endpoint'
+};
+
 const PROVIDER_LABELS = { google: 'Google', openai: 'OpenAI', anthropic: 'Anthropic' };
 function providerBadge(id) {
   id = id || 'google';
@@ -112,8 +125,10 @@ function auditSummary(audits) {
   audits.forEach((a) => {
     const p = document.createElement('span');
     p.className = 'pill ' + a.classification;
-    p.title = a.service + ' · ' + a.endpoint + ' — HTTP ' + a.httpStatus + ' ' + (a.detail || '');
-    p.textContent = a.service.split(' ')[0] + ': ' + classLabel(a.classification);
+    p.title = (CLASS_HELP[a.classification] || classLabel(a.classification)) +
+      '\n\n' + a.service + ' · ' + a.endpoint + ' — HTTP ' + a.httpStatus +
+      (a.billable ? ' · billable' : ' · free') + (a.detail ? '\n' + a.detail : '');
+    p.textContent = a.service + ': ' + classLabel(a.classification);
     wrap.appendChild(p);
   });
   return wrap;

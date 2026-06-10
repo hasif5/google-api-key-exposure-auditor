@@ -1,6 +1,18 @@
 import { getDb, findingId, getCollection, saveToCollection, removeFromCollection } from '../lib/store.js';
 import { assessRisk } from '../lib/providers.js';
 
+const CLASS_HELP = {
+  'enabled': 'Reachable with NO Referer — works from anywhere (exploitable)',
+  'restricted-referer': 'Blocked by an HTTP-referrer restriction',
+  'restricted-ip': 'Blocked by an IP-address restriction',
+  'api-not-enabled': 'This API is not enabled / not allowed for this key',
+  'invalid-key': 'Key is invalid, expired, or revoked',
+  'over-quota': 'Valid, but a quota/billing limit was hit',
+  'inconclusive': 'Could not be determined server-side',
+  'denied': 'Rejected for another reason',
+  'error': 'Network/transport error'
+};
+
 const PROVIDER_LABELS = { google: 'Google', openai: 'OpenAI', anthropic: 'Anthropic' };
 function providerBadge(id) {
   id = id || 'google';
@@ -226,6 +238,7 @@ function renderAudits(box, audits) {
     const pill = document.createElement('span');
     pill.className = 'pill ' + a.classification;
     pill.textContent = classLabel(a.classification);
+    pill.title = CLASS_HELP[a.classification] || classLabel(a.classification);
     pills.appendChild(pill);
     if (a.billable) {
       const bp = document.createElement('span');

@@ -4,6 +4,18 @@ import {
 } from '../lib/store.js';
 import { assessRisk } from '../lib/providers.js';
 
+const CLASS_HELP = {
+  'enabled': 'Reachable with NO Referer — works from anywhere (exploitable)',
+  'restricted-referer': 'Blocked by an HTTP-referrer restriction',
+  'restricted-ip': 'Blocked by an IP-address restriction',
+  'api-not-enabled': 'This API is not enabled / not allowed for this key',
+  'invalid-key': 'Key is invalid, expired, or revoked',
+  'over-quota': 'Valid, but a quota/billing limit was hit',
+  'inconclusive': 'Could not be determined from a server-side request',
+  'denied': 'Rejected for another reason',
+  'error': 'Network/transport error'
+};
+
 const PROVIDER_LABELS = { google: 'Google', openai: 'OpenAI', anthropic: 'Anthropic' };
 function providerBadge(id) {
   id = id || 'google';
@@ -104,8 +116,10 @@ function buildCard(item) {
     item.audits.forEach((a) => {
       const p = document.createElement('span');
       p.className = 'pill ' + a.classification;
-      p.title = a.service + ' · ' + a.endpoint + ' — HTTP ' + a.httpStatus + ' ' + (a.detail || '');
-      p.textContent = a.service.split(' ')[0] + ': ' + classLabel(a.classification);
+      p.title = (CLASS_HELP[a.classification] || classLabel(a.classification)) +
+        '\n\n' + a.service + ' · ' + a.endpoint + ' — HTTP ' + a.httpStatus +
+        (a.billable ? ' · billable' : ' · free') + (a.detail ? '\n' + a.detail : '');
+      p.textContent = a.service + ': ' + classLabel(a.classification);
       summary.appendChild(p);
     });
   } else {
